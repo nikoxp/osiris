@@ -1,15 +1,14 @@
 name: Build and Publish Docker Image
 
-# 定义触发条件：当推送到 main 分支或创建以 v 开头的标签（如 v1.0.0）时触发
+# 触发条件：推送到 master 分支 或 创建 v* 标签时触发
 on:
   push:
-    branches: [ "master" ]
-    tags: [ 'v*' ]
+    branches: ["master"]
+    tags: ["v*"]
 
 env:
-  # 设置注册表地址为 GitHub Container Registry
   REGISTRY: ghcr.io
-  # 镜像名称默认为 你的用户名/项目名
+  # 使用仓库全名作为镜像名称（例如：nikoxp/osiris）
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -17,13 +16,13 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write # 必须具备写入 package 的权限
+      packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 登录到 GitHub 容器注册表
+      # 登录到 GitHub Container Registry
       - name: Log into registry ${{ env.REGISTRY }}
         uses: docker/login-action@v3
         with:
@@ -31,17 +30,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 提取元数据（标签、版本等）以供后续构建使用
+      # 提取 Docker 元数据（标签、labels 等）
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            # master 分支推送时打 latest 标签
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            # Git 标签（如 v1.2.3）自动生成对应标签
             type=ref,event=tag
+            # 可选：也可以为每次 commit 生成 sha 标签
+            type=sha,format=short,enable=true
 
-      # 构建并推送镜像
+      # 构建并推送 Docker 镜像
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -49,5 +52,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # 如果你的 Dockerfile 不在根目录，请取消下行注释并修改路径
           file: ./Dockerfile
+          # 可选优化：启用 Buildx 缓存
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
